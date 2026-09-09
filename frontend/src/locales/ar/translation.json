@@ -1,0 +1,47 @@
+{
+  "nav": {
+    "home": "الرئيسية",
+    "login": "تسجيل الدخول",
+    "logout": "تسجيل الخروج",
+    "dashboard": "لوحة التحكم"
+  },
+  "event": {
+    "register": "سجل الآن",
+    "capacity": "السعة المتبقية",
+    "date": "التاريخ",
+    "location": "الموقع",
+    "time": "الوقت",
+    "status": "الحالة",
+    "draft": "مسودة",
+    "published": "منشور",
+    "registration_closed": "التسجيل مغلق",
+    "ongoing": "قائم الآن",
+    "completed": "انتهى",
+    "cancelled": "ملغي"
+  },
+  "registration": {
+    "title": "تسجيل الحضور",
+    "fullName": "الاسم الكامل",
+    "email": "البريد الإلكتروني",
+    "phone": "رقم الهاتف",
+    "organization": "الجهة / الجامعة",
+    "jobTitle": "المسمى الوظيفي",
+    "submit": "إرسال الطلب",
+    "pending": "قيد المراجعة",
+    "approved": "تم القبول",
+    "rejected": "مرفوض",
+    "alreadyRegistered": "أنت مسجل بالفعل في هذه الفعالية",
+    "capacityFull": "عذراً، لقد اكتملت سعة الفعالية"
+  },
+  "auth": {
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "login": "تسجيل الدخول",
+    "invalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة"
+  },
+  "common": {
+    "loading": "جاري التحميل...",
+    "error": "حدث خطأ ما",
+    "success": "تم بنجاح"
+  }
+}

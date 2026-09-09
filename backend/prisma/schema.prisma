@@ -1,0 +1,174 @@
+// هذا هو ملف تعريف قاعدة البيانات
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- أنواع Enum (القيم المحددة مسبقاً) ----------
+enum Role {
+  ADMIN
+  ORGANIZER
+  STAFF
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  REGISTRATION_CLOSED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum RegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CheckInMethod {
+  QR_SCAN
+  MANUAL
+}
+
+// ---------- الجداول (Models) ----------
+
+// المستخدمون (المشرفون، المنظمون، الموظفون)
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         Role
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // العلاقات
+  events       Event[]       @relation("OrganizerEvents")
+  staffAssign  EventStaff[]  @relation("StaffAssignments")
+  checkIns     CheckIn[]     @relation("CheckInByUser")
+  notifications Notification[]
+  auditLogs    AuditLog[]
+}
+
+// الفعاليات
+model Event {
+  id          String      @id @default(uuid())
+  title       String
+  slug        String      @unique
+  description String      @db.Text
+  coverImageUrl String?
+  location    String
+  date        DateTime
+  startTime   String      // مثلاً "09:00"
+  endTime     String      // مثلاً "17:00"
+  capacity    Int
+  registrationDeadline DateTime?
+  status      EventStatus @default(DRAFT)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // المفتاح الخارجي للمنظم
+  organizerId String
+  organizer   User        @relation("OrganizerEvents", fields: [organizerId], references: [id])
+
+  // العلاقات الأخرى
+  registrations Registration[]
+  staff         EventStaff[]
+  
+}
+
+// ربط الموظفين بالفعاليات (علاقة كثير إلى كثير)
+model EventStaff {
+  id         String   @id @default(uuid())
+  eventId    String
+  staffId    String
+  isActive   Boolean  @default(true)
+  assignedAt DateTime @default(now())
+
+  // العلاقات
+  event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  staff   User  @relation("StaffAssignments", fields: [staffId], references: [id])
+
+  @@unique([eventId, staffId]) // يمنع إضافة نفس الموظف لنفس الفعالية مرتين
+}
+
+// تسجيلات الحضور (الزوار)
+model Registration {
+  id           String   @id @default(uuid())
+  eventId      String
+  fullName     String
+  email        String
+  phone        String?
+  organization String?
+  jobTitle     String?
+  status       RegistrationStatus @default(PENDING)
+  registeredAt DateTime           @default(now())
+  approvedAt   DateTime?
+  rejectedAt   DateTime?
+
+  // العلاقات
+  event    Event          @relation(fields: [eventId], references: [id])
+  checkInToken CheckInToken? // واحد لواحد
+  checkIn      CheckIn?      // واحد لواحد
+
+  // منع تكرار البريد الإلكتروني لنفس الفعالية
+  @@unique([eventId, email])
+}
+
+// رمز QR المميز (ينشأ عند الموافقة على التسجيل)
+model CheckInToken {
+  id             String   @id @default(uuid())
+  registrationId String   @unique
+  token          String   @unique // UUID v4 عشوائي
+  createdAt      DateTime @default(now())
+
+  // العلاقة العكسية
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+}
+
+// سجلات الدخول (Check-in)
+model CheckIn {
+  id               String         @id @default(uuid())
+  registrationId   String         @unique
+  checkedInAt      DateTime       @default(now())
+  method           CheckInMethod
+  checkedByUserId  String
+
+  // العلاقات
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  checkedBy     User         @relation("CheckInByUser", fields: [checkedByUserId], references: [id])
+}
+
+// الإشعارات داخل التطبيق
+model Notification {
+  id                String   @id @default(uuid())
+  userId            String
+  title             String
+  message           String   @db.Text
+  isRead            Boolean  @default(false)
+  relatedEntityType String?  // مثلاً: "Event", "Registration"
+  relatedEntityId   String?
+  createdAt         DateTime @default(now())
+
+  // العلاقة
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// سجل التدقيق (Audit Log) اختياري لكن مفيد
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  action    String   // مثلاً: "REGISTRATION_APPROVED"
+  details   Json?    // بيانات إضافية بصيغة JSON
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  // العلاقة
+  user User @relation(fields: [userId], references: [id])
+}

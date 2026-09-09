@@ -1,45 +1,82 @@
-# Event Check-in System
+# 🎫 Event Check-in System
 
-A production-grade full-stack web application for managing events, attendee registrations, and QR-code-based check-ins. Built with a modular monolith architecture, real-time updates, and a premium UI.
+نظام متكامل لإدارة الفعاليات والتسجيل والتحقق من الدخول باستخدام QR Code، مبني بتقنيات حديثة وقابل للنشر في بيئة إنتاجية.
 
-## Key Features
+[![Node.js](https://img.shields.io/badge/Node.js-22.x-green.svg)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-18.x-61DAFB.svg)](https://reactjs.org/)
+[![Prisma](https://img.shields.io/badge/Prisma-6.x-2D3748.svg)](https://www.prisma.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-- **Multi-role System**: Admin, Organizer, and Check-in Staff with strict RBAC.
-- **Event Management**: Create, publish, cancel, and manage events with capacity limits.
-- **Public Event Pages**: Responsive landing pages for attendees to register.
-- **Registration Workflow**: Pending → Approved/Rejected → QR Generation.
-- **QR Check-in**: Secure, token-based QR codes with anti-fraud validation (wrong event, already checked-in, etc.).
-- **Browser Scanner**: Mobile-first camera QR scanner.
-- **Real-time Dashboard**: Live attendance updates via WebSockets (Socket.IO).
-- **Analytics**: Attendance statistics, charts, and CSV export.
-- **Staff Management**: Assign check-in staff to specific events.
-- **In-app Notifications**: Real-time alerts for approvals, capacity alerts, etc.
-- **Local File Uploads**: Event cover images stored locally (ready for cloud migration).
+---
 
-## Tech Stack
+## ✨ المميزات
 
-| Layer              | Technology                                                                                                        |
-| :----------------- | :---------------------------------------------------------------------------------------------------------------- |
-| **Frontend**       | React 18, TypeScript, Vite, Tailwind CSS, React Router 6, TanStack Query, Zod, Recharts, i18next (Arabic/English) |
-| **Backend**        | Node.js 20/22, Express 4, TypeScript, Prisma ORM, Socket.IO                                                       |
-| **Database**       | PostgreSQL 16 (Docker)                                                                                            |
-| **Infrastructure** | Docker, Docker Compose, Git                                                                                       |
+- 🔐 **نظام أدوار متكامل**: Admin، Organizer، Staff مع صلاحيات مختلفة.
+- 📅 **إدارة الفعاليات**: إنشاء، تعديل، نشر، إلغاء مع التحكم بالسعة.
+- 📝 **تسجيل الحضور**: صفحة عامة للتسجيل مع التحقق من السعة ومنع التكرار.
+- ✅ **الموافقة والرفض**: إدارة التسجيلات مع توليد رمز QR فوري عند الموافقة.
+- 📱 **ماسح QR**: مسح ضوئي عبر الكاميرا من المتصفح (يدعم الهواتف والحواسيب).
+- 📊 **تحليلات**: رسوم بيانية وإحصائيات لحظية عن التسجيلات والدخول.
+- 🔔 **إشعارات فورية**: تنبيهات داخل التطبيق عند حدوث أحداث مهمة.
+- 📥 **تصدير CSV**: تصدير بيانات المشاركين بسهولة.
+- 🌐 **دعم اللغة العربية**: واجهة كاملة بالعربية مع دعم RTL.
+- 🛡️ **أمان متكامل**: Rate Limiting، Helmet، JWT، RBAC.
 
-## Quick Start
+---
 
-1. Clone the repository.
-2. Copy `.env.example` to `.env` in both `backend/` and `frontend/` (adjust as needed).
-3. Run `docker-compose up -d` to start PostgreSQL.
-4. Follow the setup guide in `docs/SETUP.md` (coming soon).
+## 🛠️ التقنيات المستخدمة
 
-## Documentation
+### الخادم (Backend)
 
-- [Project Specification](docs/PROJECT_SPEC.md)
-- [Architecture Decision](docs/ARCHITECTURE.md)
-- [Database Design](docs/DATABASE_DESIGN.md)
-- [API Reference](docs/API.md)
-- [Deployment Guide](docs/DEPLOYMENT.md)
+| التقنية            | الإصدار | الغرض               |
+| :----------------- | :------ | :------------------ |
+| Node.js            | 22.x    | بيئة التشغيل        |
+| Express            | 4.x     | إطار الخادم         |
+| TypeScript         | 5.x     | لغة البرمجة         |
+| Prisma             | 6.x     | ORM وقاعدة البيانات |
+| PostgreSQL         | 16.x    | قاعدة البيانات      |
+| Socket.IO          | 4.x     | التحديثات اللحظية   |
+| JWT                | -       | المصادقة            |
+| Bcrypt             | -       | تشفير كلمات المرور  |
+| Helmet             | -       | أمان الرؤوس         |
+| express-rate-limit | -       | منع الهجمات         |
 
-## License
+### الواجهة الأمامية (Frontend)
 
-MIT
+| التقنية        | الإصدار | الغرض           |
+| :------------- | :------ | :-------------- |
+| React          | 18.x    | إطار الواجهة    |
+| Vite           | 5.x     | بناء المشروع    |
+| TypeScript     | 5.x     | لغة البرمجة     |
+| Tailwind CSS   | 3.x     | التصميم         |
+| React Router   | 6.x     | التنقل          |
+| TanStack Query | 5.x     | إدارة الحالة    |
+| Recharts       | 2.x     | الرسوم البيانية |
+| i18next        | -       | الترجمة         |
+| html5-qrcode   | -       | الماسح الضوئي   |
+
+### البنية التحتية
+
+- Docker & Docker Compose
+- PostgreSQL في حاوية
+
+---
+
+## 📋 متطلبات التشغيل
+
+- Node.js (v20 أو أحدث)
+- Docker Desktop
+- Git
+- npm أو yarn
+
+---
+
+## 🚀 البدء السريع
+
+### 1. استنساخ المشروع
+
+```bash
+git clone <repository-url>
+cd event-checkin-system
+```

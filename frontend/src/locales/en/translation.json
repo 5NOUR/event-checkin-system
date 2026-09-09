@@ -1,0 +1,47 @@
+{
+  "nav": {
+    "home": "Home",
+    "login": "Login",
+    "logout": "Logout",
+    "dashboard": "Dashboard"
+  },
+  "event": {
+    "register": "Register Now",
+    "capacity": "Remaining Capacity",
+    "date": "Date",
+    "location": "Location",
+    "time": "Time",
+    "status": "Status",
+    "draft": "Draft",
+    "published": "Published",
+    "registration_closed": "Registration Closed",
+    "ongoing": "Ongoing",
+    "completed": "Completed",
+    "cancelled": "Cancelled"
+  },
+  "registration": {
+    "title": "Attendee Registration",
+    "fullName": "Full Name",
+    "email": "Email",
+    "phone": "Phone Number",
+    "organization": "Organization / University",
+    "jobTitle": "Job Title",
+    "submit": "Submit Registration",
+    "pending": "Pending Review",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "alreadyRegistered": "You are already registered for this event",
+    "capacityFull": "Sorry, the event capacity is full"
+  },
+  "auth": {
+    "email": "Email",
+    "password": "Password",
+    "login": "Login",
+    "invalidCredentials": "Invalid email or password"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "success": "Success"
+  }
+}
