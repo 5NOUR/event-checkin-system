@@ -1,22 +1,25 @@
 import { Router } from "express";
 import { authenticateToken } from "../../middleware/auth";
 import * as notificationController from "../../controllers/notificationController";
+import { validate } from "../../middleware/validate";
+import { uuidParamSchema } from "../../validators/common.validator";
 
 const router = Router();
 
-// جميع المسارات تتطلب مصادقة
 router.use(authenticateToken);
 
-// GET /api/v1/notifications
 router.get("/", notificationController.getNotifications);
-
-// PATCH /api/v1/notifications/:id/read
-router.patch("/:id/read", notificationController.markNotificationAsRead);
-
-// PATCH /api/v1/notifications/read-all
+router.get("/unread-count", notificationController.getUnreadCount);
+router.patch(
+  "/:id/read",
+  validate({ params: uuidParamSchema }),
+  notificationController.markNotificationAsRead,
+);
 router.patch("/read-all", notificationController.markAllNotificationsAsRead);
-
-// DELETE /api/v1/notifications/:id
-router.delete("/:id", notificationController.deleteNotification);
+router.delete(
+  "/:id",
+  validate({ params: uuidParamSchema }),
+  notificationController.deleteNotification,
+);
 
 export default router;

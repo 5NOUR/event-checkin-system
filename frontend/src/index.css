@@ -1,12 +1,224 @@
+/* ============================================
+   EventCheck Design System v2.0
+   Philosophy: Quiet Luxury / Human Crafted
+   ============================================ */
+
+/* ========== الخطوط (Google Fonts) ========== */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Cormorant+Garamond:wght@500;600&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ========== Base Layer ========== */
 @layer base {
+  :root {
+    /* Core Primitives */
+    --ink-950: #0a0a0a;
+    --ink-900: #171717;
+    --ink-800: #262626;
+    --ink-700: #404040;
+    --ink-600: #525252;
+    --ink-500: #737373;
+    --ink-400: #a3a3a3;
+    --ink-300: #d4d4d4;
+    --ink-200: #e5e5e0;
+    --ink-100: #f0f0ec;
+    --ink-50: #f7f7f5;
+
+    --gold-700: #8b6f3f;
+    --gold-600: #a17f4a;
+    --gold-500: #b08d57;
+    --gold-400: #c4a574;
+    --gold-100: #f5ede0;
+
+    /* Semantic Aliases */
+    --color-bg-base: var(--ink-50);
+    --color-bg-surface: #ffffff;
+    --color-bg-sunken: var(--ink-100);
+    --color-bg-hover: var(--ink-50);
+
+    --color-text-primary: var(--ink-900);
+    --color-text-secondary: var(--ink-700);
+    --color-text-muted: var(--ink-600);
+    --color-text-disabled: var(--ink-400);
+    --color-text-inverse: #ffffff;
+
+    --color-border-default: var(--ink-200);
+    --color-border-strong: var(--ink-300);
+    --color-border-subtle: rgba(0, 0, 0, 0.06);
+
+    --color-accent: var(--gold-500);
+    --color-accent-hover: var(--gold-600);
+    --color-accent-subtle: var(--gold-100);
+  }
+
+  /* ========== Reset & Base ========== */
   html {
-    font-family: "Inter", "Tahoma", system-ui, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
+
   body {
-    @apply bg-[#F7F7F5] text-[#171717] antialiased;
+    @apply bg-ink-50 text-ink-900 font-sans text-body antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
+
+  /* الخط العربي */
+  [lang="ar"] body,
+  [dir="rtl"] body {
+    font-family: "IBM Plex Sans Arabic", "Inter", system-ui, sans-serif;
+  }
+
+  /* ========== Typography Base ========== */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-semibold tracking-tight text-ink-900;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* ========== Links ========== */
+  a {
+    @apply transition-colors duration-150;
+  }
+
+  /* ========== Inputs ========== */
+  input,
+  textarea,
+  select {
+    @apply font-sans;
+  }
+
+  /* ========== Focus States ========== */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-ink-900 ring-offset-2 ring-offset-ink-50;
+  }
+
+  /* ========== Selection ========== */
+  ::selection {
+    @apply bg-gold-100 text-ink-900;
+  }
+
+  /* ========== Scrollbar (خفيف وأنيق) ========== */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-ink-300 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-ink-400;
+  }
+
+  /* ========== Reduced Motion ========== */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ========== Components Layer ========== */
+@layer components {
+  /* Container موحّد */
+  .container-page {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  /* Heading helpers */
+  .heading-display {
+    @apply text-display font-semibold tracking-tight text-ink-900;
+  }
+  .heading-h1 {
+    @apply text-h1 font-semibold tracking-tight text-ink-900;
+  }
+  .heading-h2 {
+    @apply text-h2 font-semibold tracking-tight text-ink-900;
+  }
+  .heading-h3 {
+    @apply text-h3 font-semibold text-ink-900;
+  }
+
+  /* Label صغير */
+  .label-overline {
+    @apply text-micro font-semibold uppercase tracking-[0.08em] text-ink-600;
+  }
+
+  /* Caption */
+  .caption {
+    @apply text-caption text-ink-600 tabular-nums;
+  }
+
+  /* Number display (للإحصائيات) */
+  .stat-number {
+    @apply text-display font-semibold tabular-nums tracking-tight text-ink-900;
+  }
+
+  /* Divider */
+  .divider {
+    @apply border-t border-ink-200;
+  }
+
+  /* Focus Ring Utility */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white;
+  }
+
+  /* Skeleton base */
+  .skeleton {
+    @apply animate-pulse bg-ink-200 rounded-md;
+  }
+}
+
+/* ========== Utilities Layer ========== */
+@layer utilities {
+  /* Text Wrap utilities */
+  .text-balance {
+    text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+
+  /* RTL-aware helpers */
+  [dir="rtl"] .flip-x {
+    transform: scaleX(-1);
+  }
+
+  /* Hide scrollbar */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Divider subtler */
+  .border-subtle {
+    border-color: rgba(0, 0, 0, 0.06);
+  }
+}
+
+/* ========== RTL Support (Tailwind v3 لا يدعمه بالكامل تلقائياً) ========== */
+[dir="rtl"] .rtl-flip {
+  transform: scaleX(-1);
 }

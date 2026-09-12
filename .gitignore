@@ -1,10 +1,35 @@
-node_modules/
+# Environment files
 .env
-.DS_Store
+.env.*
+.env.local
+.env.production
+!.env.example
+!backend/.env.example
+!backend/.env.production.example
+!frontend/.env.example
+
+# Uploads
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Build outputs
+backend/dist/
+frontend/dist/
+
+# Node
+node_modules/
 dist/
 build/
-uploads/
+
+# Logs
 *.log
-coverage/
+npm-debug.log*
+
+# IDE
 .vscode/
 .idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

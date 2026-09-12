@@ -4,8 +4,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ---------- أنواع Enum (القيم المحددة مسبقاً) ----------
@@ -54,6 +55,10 @@ model User {
   checkIns     CheckIn[]     @relation("CheckInByUser")
   notifications Notification[]
   auditLogs    AuditLog[]
+  refreshTokens RefreshToken[]
+  passwordResetToken   String?   @unique
+  passwordResetExpires DateTime?
+  assignedGates EventStaffGate[]
 }
 
 // الفعاليات
@@ -80,7 +85,15 @@ model Event {
   // العلاقات الأخرى
   registrations Registration[]
   staff         EventStaff[]
-  
+  waitlist     Waitlist[]
+  speakers    Speaker[]    // ✅ إضافة العلاقة مع المتحدثين
+  agendaItems AgendaItem[] // ✅ إضافة العلاقة مع الأجندة
+  faqs          Faq[]
+  sponsors      Sponsor[]
+  galleryImages GalleryImage[]
+  gates Gate[]
+  ticketTypes TicketType[]
+
 }
 
 // ربط الموظفين بالفعاليات (علاقة كثير إلى كثير)
@@ -92,7 +105,7 @@ model EventStaff {
   assignedAt DateTime @default(now())
 
   // العلاقات
-  event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade) 
   staff   User  @relation("StaffAssignments", fields: [staffId], references: [id])
 
   @@unique([eventId, staffId]) // يمنع إضافة نفس الموظف لنفس الفعالية مرتين
@@ -113,9 +126,13 @@ model Registration {
   rejectedAt   DateTime?
 
   // العلاقات
-  event    Event          @relation(fields: [eventId], references: [id])
+   event        Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
   checkInToken CheckInToken? // واحد لواحد
   checkIn      CheckIn?      // واحد لواحد
+   ticketTypeId String?
+  ticketType   TicketType? @relation(fields: [ticketTypeId], references: [id])
+
+  @@index([ticketTypeId])
 
   // منع تكرار البريد الإلكتروني لنفس الفعالية
   @@unique([eventId, email])
@@ -139,36 +156,199 @@ model CheckIn {
   checkedInAt      DateTime       @default(now())
   method           CheckInMethod
   checkedByUserId  String
+  gateId           String? 
 
   // العلاقات
   registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
   checkedBy     User         @relation("CheckInByUser", fields: [checkedByUserId], references: [id])
+  gate          Gate?        @relation(fields: [gateId], references: [id])
+
+  @@index([gateId])
 }
 
 // الإشعارات داخل التطبيق
 model Notification {
   id                String   @id @default(uuid())
   userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String   @default("system")   // ✅ قيمة افتراضية للصفوف القديمة
   title             String
   message           String   @db.Text
   isRead            Boolean  @default(false)
-  relatedEntityType String?  // مثلاً: "Event", "Registration"
+  priority          String   @default("medium")   // ✅ قيمة افتراضية للصفوف القديمة
+  metadata          Json?                         // ✅ اختياري (nullable)
+  relatedEntityType String?
   relatedEntityId   String?
   createdAt         DateTime @default(now())
-
-  // العلاقة
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // سجل التدقيق (Audit Log) اختياري لكن مفيد
 model AuditLog {
-  id        String   @id @default(uuid())
+   id        String   @id @default(uuid())
   userId    String
-  action    String   // مثلاً: "REGISTRATION_APPROVED"
-  details   Json?    // بيانات إضافية بصيغة JSON
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  details   Json?
   ipAddress String?
   createdAt DateTime @default(now())
 
-  // العلاقة
-  user User @relation(fields: [userId], references: [id])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+}
+
+model Waitlist {
+  id         String   @id @default(uuid())
+  eventId    String
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  email      String   // بريد الحضور (نفس البريد المستخدم في التسجيل)
+  fullName   String
+  phone      String?
+  organization String?
+  jobTitle   String?
+  registeredAt DateTime @default(now())
+  promotedAt DateTime?  // عندما يتم ترقيتها إلى تسجيل مقبول
+  status     WaitlistStatus @default(WAITING)
+  
+  // لمنع ازدواجية البريد لنفس الفعالية في قائمة الانتظار
+  @@unique([eventId, email])
+}
+
+enum WaitlistStatus {
+  WAITING
+  PROMOTED
+  EXPIRED
+  CANCELLED
+}
+// المتحدثون
+model Speaker {
+  id        String   @id @default(uuid())
+  eventId   String
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name      String
+  title     String?  // المسمى الوظيفي
+  bio       String?  // السيرة الذاتية
+  imageUrl  String?  // رابط الصورة
+  order     Int      @default(0) // ترتيب العرض
+  createdAt DateTime @default(now())
+  agendaItems AgendaItem[]
+
+}
+
+// فقرات الأجندة
+model AgendaItem {
+  id         String   @id @default(uuid())
+  eventId    String
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  time       String   // "09:00 - 10:00"
+  title      String
+  description String?
+  speakerId  String?  // ربط بمتحدث (اختياري)
+  speaker    Speaker? @relation(fields: [speakerId], references: [id])
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+}
+model Faq {
+  id        String   @id @default(uuid())
+  eventId   String
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  question  String
+  answer    String   @db.Text
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventId])
+}
+
+// الشركاء
+model Sponsor {
+  id        String   @id @default(uuid())
+  eventId   String
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name      String
+  logoUrl   String?
+  websiteUrl String?
+  tier      String?  // platinum, gold, silver, bronze
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventId])
+}
+
+// معرض الصور
+model GalleryImage {
+  id        String   @id @default(uuid())
+  eventId   String
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  imageUrl  String
+  caption   String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([eventId])
+}
+model Gate {
+  id        String   @id @default(uuid())
+  eventId   String
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name      String   // "البوابة الرئيسية", "بوابة VIP"
+  location  String?  // وصف الموقع
+  isActive  Boolean  @default(true)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // العلاقات
+  checkIns    CheckIn[]
+  staffGates  EventStaffGate[]
+  allowedTicketTypes TicketType[]  // علاقة many-to-many
+
+
+  @@index([eventId])
+}
+
+// علاقة many-to-many بين الموظفين والبوابات
+model EventStaffGate {
+  id        String   @id @default(uuid())
+  staffId   String
+  gateId    String
+  staff     User     @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  gate      Gate     @relation(fields: [gateId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+
+  @@unique([staffId, gateId])
+  @@index([staffId])
+  @@index([gateId])
+}
+model TicketType {
+  id          String   @id @default(uuid())
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name        String   // "Standard", "VIP", "Student", "Speaker", ...
+  description String?
+  color       String?  // لون للتمييز (hex)
+  capacity    Int?     // سعة اختيارية لهذا النوع (null = لا حد)
+  price       Float?   // اختياري (للمستقبل)
+  isActive    Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // العلاقات
+  registrations Registration[]
+  gates         Gate[]         // البوابات التي تقبل هذا النوع
+
+  @@index([eventId])
 }

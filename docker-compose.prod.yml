@@ -1,0 +1,69 @@
+version: "3.9"
+
+# ==========================================
+# Event Check-in System - Production Stack
+# ==========================================
+# هذا الملف لاختبار الإنتاج محلياً
+# في النشر الفعلي، سنستخدم Render + Vercel + Neon
+
+services:
+  # ========== PostgreSQL ==========
+  postgres:
+    image: postgres:16-alpine
+    container_name: event-checkin-db-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: eventadmin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-prod-secure-password}
+      POSTGRES_DB: eventdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eventadmin -d eventdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ========== Backend (Production) ==========
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: event-checkin-backend-prod
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://eventadmin:${POSTGRES_PASSWORD:-prod-secure-password}@postgres:5432/eventdb
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-real-production-min-32-chars}
+      PORT: 5000
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-console}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@eventcheck.app}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-EventCheck}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - backend_uploads:/app/uploads
+      # ========== Frontend (Nginx) ==========
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_URL: http://localhost:5000/api/v1
+    container_name: event-checkin-frontend-prod
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_prod_data:
+  backend_uploads:

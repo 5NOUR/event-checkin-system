@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "preview": "vite preview",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
@@ -16,6 +17,7 @@
     "html5-qrcode": "^2.3.8",
     "i18next": "^26.4.2",
     "i18next-browser-languagedetector": "^8.2.1",
+    "lucide-react": "^1.45.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -36,7 +38,10 @@
     "eslint": "^10.9.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.4",
+    "glob": "^13.0.6",
     "globals": "^17.11.0",
+    "i18next-parser": "^9.0.2",
+    "i18next-scanner": "^4.6.0",
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
     "typescript": "~6.0.2",

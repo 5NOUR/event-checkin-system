@@ -12,18 +12,16 @@ export function getIO(): SocketIOServer {
 }
 
 export function initIO(server: HTTPServer): SocketIOServer {
-  console.log("🔌 Initializing Socket.IO...");
+  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
 
   const socketIO = new SocketIOServer(server, {
     cors: {
-      origin: process.env.FRONTEND_URL || "http://localhost:5173",
+      origin: [frontendUrl, "http://localhost:5173", "http://localhost:4173"],
       credentials: true,
       methods: ["GET", "POST"],
     },
     path: "/socket.io",
-    // ✅ إضافة مسار صريح للتأكد
     serveClient: false,
-    // ✅ ضبط إعدادات الـ ping
     pingTimeout: 60000,
     pingInterval: 25000,
   });
@@ -40,10 +38,21 @@ export function initIO(server: HTTPServer): SocketIOServer {
 
   // ✅ المصادقة: نسمح دائماً بالاتصال، لكن نحفظ حالة المصادقة
   socketIO.use((socket, next) => {
-    const token = socket.handshake.auth.token;
-    console.log(
-      `🔍 Socket ${socket.id} - Token: ${token ? "present" : "missing"}`,
-    );
+    // ✅ قراءة التوكن من الـ Cookie
+    const cookies = socket.handshake.headers.cookie;
+    let token: string | null = null;
+
+    if (cookies) {
+      const cookieMap = Object.fromEntries(
+        cookies.split("; ").map((c) => c.split("=")),
+      );
+      token = cookieMap["accessToken"] || null;
+    }
+
+    // أو من auth للتوافق العكسي
+    if (!token) {
+      token = socket.handshake.auth.token;
+    }
 
     if (token) {
       try {
@@ -51,18 +60,16 @@ export function initIO(server: HTTPServer): SocketIOServer {
         const decoded = jwt.verify(token, secret) as any;
         socket.data.user = decoded;
         socket.data.authenticated = true;
-        console.log(`✅ Auth success: ${decoded.email} (${decoded.role})`);
+        console.log(`✅ Socket auth: ${decoded.email}`);
       } catch (err) {
-        console.log(
-          `❌ Auth failed: ${err instanceof Error ? err.message : "Unknown"}`,
-        );
         socket.data.authenticated = false;
         socket.data.user = null;
+        console.log(`⚠️ Socket auth failed (guest mode)`);
       }
     } else {
-      console.log(`⚠️ No token provided`);
       socket.data.authenticated = false;
       socket.data.user = null;
+      console.log(`⚠️ Socket no token (guest mode)`);
     }
     next();
   });

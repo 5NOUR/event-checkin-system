@@ -1,0 +1,73 @@
+# ==========================================
+# Event Check-in System - Backend Production
+# Multi-Stage Build
+# ==========================================
+
+# ========== Stage 1: Dependencies ==========
+FROM node:22-alpine AS deps
+
+WORKDIR /app
+
+# نسخ ملفات الاعتماديات
+COPY package*.json ./
+COPY prisma ./prisma
+
+# تثبيت كل الاعتماديات (production + dev لأننا نحتاج prisma generate + tsc)
+RUN npm ci
+
+# ========== Stage 2: Builder ==========
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+# نسخ الاعتماديات من المرحلة السابقة
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# توليد Prisma Client + بناء TypeScript
+RUN npx prisma generate
+RUN npm run build
+
+# ========== Stage 3: Production Runner ==========
+FROM node:22-alpine AS runner
+
+# إنشاء مستخدم غير جذري
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nodeapp
+
+WORKDIR /app
+
+# تعيين NODE_ENV
+ENV NODE_ENV=production
+
+# نسخ package.json
+COPY package*.json ./
+
+# تثبيت الاعتماديات الإنتاجية فقط
+RUN npm ci --omit=dev && npm cache clean --force
+
+# نسخ Prisma Schema
+COPY --from=builder /app/prisma ./prisma
+
+# نسخ الـ Prisma Client المُولَّد
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+
+# نسخ التطبيق المبني
+COPY --from=builder --chown=nodeapp:nodejs /app/dist ./dist
+
+# تغيير الملكية للمستخدم غير الجذري
+RUN chown -R nodeapp:nodejs /app
+
+# التبديل إلى المستخدم غير الجذري
+USER nodeapp
+
+# فتح المنفذ
+EXPOSE 5000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:5000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"
+
+# الأمر النهائي
+CMD ["node", "dist/server.js"]

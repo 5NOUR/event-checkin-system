@@ -51,16 +51,16 @@ export async function addStaffToEvent(
   });
 
   if (!event) {
-    return { success: false, error: "الفعالية غير موجودة" };
+    return { success: false, error: "الفعالية غير موجودة", code: "NOT_FOUND" };
   }
 
   if (event.organizerId !== organizerId) {
     return {
       success: false,
       error: "ليس لديك صلاحية لإضافة موظفين لهذه الفعالية",
+      code: "FORBIDDEN", // ✅ إضافة
     };
   }
-
   // البحث عن المستخدم بالبريد الإلكتروني
   let user = await prisma.user.findUnique({
     where: { email },
@@ -217,16 +217,16 @@ export async function reactivateStaff(
   });
 
   if (!event) {
-    return { success: false, error: "الفعالية غير موجودة" };
+    return { success: false, error: "الفعالية غير موجودة", code: "NOT_FOUND" };
   }
 
   if (event.organizerId !== organizerId) {
     return {
       success: false,
-      error: "ليس لديك صلاحية لإعادة تفعيل موظفين في هذه الفعالية",
+      error: "ليس لديك صلاحية",
+      code: "FORBIDDEN",
     };
   }
-
   const assignment = await prisma.eventStaff.findUnique({
     where: {
       eventId_staffId: {

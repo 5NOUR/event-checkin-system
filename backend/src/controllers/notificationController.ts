@@ -7,35 +7,46 @@ export async function getNotifications(req: Request, res: Response) {
     const userId = req.user!.userId;
     const limit = Number(req.query.limit) || 20;
     const offset = Number(req.query.offset) || 0;
+    const type = req.query.type as string | undefined;
+    const isRead =
+      req.query.isRead === "true"
+        ? true
+        : req.query.isRead === "false"
+          ? false
+          : undefined;
+    const priority = req.query.priority as string | undefined;
 
-    const result = await notificationService.getUserNotifications(
-      userId,
+    const result = await notificationService.getUserNotifications(userId, {
       limit,
       offset,
-    );
-
-    if (!result.success) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: "FETCH_NOTIFICATIONS_FAILED",
-          message: result.error,
-        },
-      });
-    }
+      type: type as any,
+      isRead,
+      priority,
+    });
 
     return res.status(200).json({
       success: true,
-      data: result.data,
+      data: result,
     });
   } catch (error) {
     console.error("خطأ في جلب الإشعارات:", error);
     return res.status(500).json({
       success: false,
-      error: {
-        code: "SERVER_ERROR",
-        message: "حدث خطأ أثناء جلب الإشعارات",
-      },
+      error: { code: "SERVER_ERROR", message: "حدث خطأ أثناء جلب الإشعارات" },
+    });
+  }
+}
+export async function getUnreadCount(req: Request, res: Response) {
+  try {
+    const userId = req.user!.userId;
+    const count = await notificationService.getUnreadCount(userId);
+    return res
+      .status(200)
+      .json({ success: true, data: { unreadCount: count } });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: { code: "SERVER_ERROR", message: "حدث خطأ" },
     });
   }
 }

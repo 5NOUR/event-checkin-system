@@ -166,11 +166,20 @@ export async function getPublicEventBySlug(slug: string) {
   const event = await prisma.event.findUnique({
     where: { slug },
     include: {
-      organizer: {
-        select: { name: true, email: true },
+      organizer: { select: { name: true, email: true } },
+      speakers: { orderBy: { order: "asc" } },
+      agendaItems: { orderBy: { order: "asc" }, include: { speaker: true } },
+      faqs: { orderBy: { order: "asc" } },
+      sponsors: { orderBy: { order: "asc" } },
+      galleryImages: { orderBy: { order: "asc" } },
+      gates: {
+        where: { isActive: true },
+        orderBy: { order: "asc" },
       },
-      _count: {
-        select: { registrations: true },
+      _count: { select: { registrations: true } },
+      ticketTypes: {
+        where: { isActive: true },
+        orderBy: { order: "asc" },
       },
     },
   });
@@ -179,7 +188,6 @@ export async function getPublicEventBySlug(slug: string) {
     return { success: false, error: "الفعالية غير موجودة" };
   }
 
-  // نحسب السعة المتبقية يدوياً
   const remainingCapacity = event.capacity - event._count.registrations;
 
   return {
@@ -353,6 +361,28 @@ export async function getEventAnalytics(eventId: string, organizerId: string) {
     },
     take: 10,
   });
+  const gateActivity = await prisma.checkIn.groupBy({
+    by: ["gateId"],
+    where: {
+      registration: { eventId: eventId },
+      gateId: { not: null },
+    },
+    _count: true,
+  });
+
+  // جلب أسماء البوابات
+  const gatesWithCounts = await Promise.all(
+    gateActivity.map(async (item) => {
+      const gate = await prisma.gate.findUnique({
+        where: { id: item.gateId! },
+        select: { name: true },
+      });
+      return {
+        gateName: gate?.name || "غير معروفة",
+        count: item._count,
+      };
+    }),
+  );
 
   return {
     success: true,
@@ -362,6 +392,7 @@ export async function getEventAnalytics(eventId: string, organizerId: string) {
       approved: statusMap.APPROVED,
       rejected: statusMap.REJECTED,
       checkedIn: checkedInCount,
+      gateActivity: gatesWithCounts,
       remainingCapacity: event.capacity - checkedInCount,
       attendanceRate:
         event._count.registrations > 0

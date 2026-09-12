@@ -2,7 +2,6 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { Role } from "@prisma/client";
 
-// توسيع نوع Request لإضافة user
 declare global {
   namespace Express {
     interface Request {
@@ -15,45 +14,51 @@ declare global {
   }
 }
 
-// دالة للتحقق من صحة التوكن
 export function authenticateToken(
   req: Request,
   res: Response,
   next: NextFunction,
 ) {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1]; // "Bearer TOKEN"
+  // 1️⃣ محاولة قراءة التوكن من الـ Cookie
+  let token = req.cookies?.accessToken;
+
+  // 2️⃣ إذا لم يكن في الـ Cookie، حاول من الـ Authorization header
+  if (!token) {
+    const authHeader = req.headers["authorization"];
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.split(" ")[1];
+    }
+  }
 
   if (!token) {
     return res.status(401).json({
       success: false,
-      error: {
-        code: "UNAUTHORIZED",
-        message: "أنت غير مصرح لك. يرجى تسجيل الدخول.",
-      },
+      error: { code: "UNAUTHORIZED", message: "أنت غير مصرح لك." },
     });
   }
 
-  const secret = process.env.JWT_SECRET || "default-secret-change-this";
-
-  jwt.verify(token, secret, (err, decoded) => {
-    if (err) {
-      return res.status(403).json({
+  try {
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET || "default-secret-change-this",
+    ) as any;
+    req.user = decoded;
+    next();
+  } catch (err) {
+    if (err instanceof jwt.TokenExpiredError) {
+      return res.status(401).json({
         success: false,
-        error: {
-          code: "FORBIDDEN",
-          message: "الرمز غير صالح أو منتهي الصلاحية.",
-        },
+        error: { code: "TOKEN_EXPIRED", message: "انتهت صلاحية الجلسة." },
       });
     }
-
-    // تخزين بيانات المستخدم في الطلب للاستخدام في المسارات المحمية
-    req.user = decoded as { userId: string; email: string; role: Role };
-    next();
-  });
+    return res.status(403).json({
+      success: false,
+      error: { code: "FORBIDDEN", message: "الرمز غير صالح." },
+    });
+  }
 }
 
-// دالة للتحقق من دور المستخدم (RBAC)
+// دالة requireRole تبقى كما هي (تتحقق من req.user.role)
 export function requireRole(roles: Role[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {

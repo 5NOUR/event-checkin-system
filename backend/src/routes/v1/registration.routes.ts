@@ -2,26 +2,53 @@ import { Router } from "express";
 import { authenticateToken, requireRole } from "../../middleware/auth";
 import { Role } from "@prisma/client";
 import * as registrationController from "../../controllers/registrationController";
+import { validate } from "../../middleware/validate";
+import { createRegistrationSchema } from "../../validators/registration.validator";
+import {
+  uuidParamSchema,
+  eventIdParamSchema,
+  tokenParamSchema,
+} from "../../validators/common.validator";
+import { registrationLimiter } from "../../middleware/rateLimiter";
 
 const router = Router();
-// مسار عام لعرض رمز QR (بدون مصادقة)
 
-// ... باقي المسارات (المحمية) كما هي
-// المسار العام (بدون مصادقة) لتسجيل الحضور - موجود مسبقاً
-router.post("/", registrationController.register);
-router.get("/qr/:token", registrationController.getRegistrationByToken);
+// ✅ Public routes
+router.post(
+  "/",
+  registrationLimiter,
+  validate({ body: createRegistrationSchema }),
+  registrationController.register,
+);
+router.get(
+  "/qr/:token",
+  validate({ params: tokenParamSchema }),
+  registrationController.getRegistrationByToken,
+);
 
-// جميع المسارات التالية محمية وتتطلب دور ORGANIZER أو ADMIN
+// ✅ Protected routes
 router.use(authenticateToken);
 router.use(requireRole([Role.ORGANIZER, Role.ADMIN]));
 
-// GET /api/v1/registrations/event/:eventId - جلب تسجيلات فعالية
-router.get("/event/:eventId", registrationController.getRegistrations);
-
-// POST /api/v1/registrations/:id/approve - الموافقة على تسجيل
-router.post("/:id/approve", registrationController.approveRegistration);
-
-// POST /api/v1/registrations/:id/reject - رفض تسجيل
-router.post("/:id/reject", registrationController.rejectRegistration);
+router.get(
+  "/event/:eventId",
+  validate({ params: eventIdParamSchema }),
+  registrationController.getRegistrations,
+);
+router.post(
+  "/:id/approve",
+  validate({ params: uuidParamSchema }),
+  registrationController.approveRegistration,
+);
+router.post(
+  "/:id/reject",
+  validate({ params: uuidParamSchema }),
+  registrationController.rejectRegistration,
+);
+router.get(
+  "/waitlist/:eventId",
+  validate({ params: eventIdParamSchema }),
+  registrationController.getWaitlist,
+);
 
 export default router;

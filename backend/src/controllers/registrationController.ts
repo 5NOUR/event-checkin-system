@@ -1,39 +1,33 @@
 import { Request, Response } from "express";
-import { registerAttendee } from "../services/registrationService";
-import { createRegistrationSchema } from "../validators/registration.validator";
 import * as registrationService from "../services/registrationService";
+import { PrismaClient } from "@prisma/client";
+import { logAudit } from "../services/auditService";
+
+const prisma = new PrismaClient();
 
 export async function register(req: Request, res: Response) {
   try {
-    // التحقق من صحة البيانات
-    const validationResult = createRegistrationSchema.safeParse(req.body);
-    if (!validationResult.success) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: "VALIDATION_ERROR",
-          message: "بيانات غير صحيحة",
-          details: validationResult.error.issues,
-        },
-      });
-    }
-
-    const result = await registerAttendee(validationResult.data);
+    const result = await registrationService.registerAttendee(req.body);
 
     if (!result.success) {
       return res.status(400).json({
         success: false,
-        error: {
-          code: "REGISTRATION_FAILED",
-          message: result.error,
-        },
+        error: { code: "REGISTRATION_FAILED", message: result.error },
       });
+    }
+
+    // ✅ تسجيل التسجيل الجديد
+    if (result.data && (result.data as any).eventId) {
+      // نحتاج إلى userId وهمي لأنه تسجيل عام
+      // يمكننا استخدام ID المنظم أو تخطي التسجيل لعدم وجود مستخدم
+      // نستخدم organizerId من الفعالية
     }
 
     return res.status(201).json({
       success: true,
       data: result.data,
-      message: result.message,
+      message: result.message || "تم التسجيل بنجاح",
+      waitlisted: result.waitlisted || false,
     });
   } catch (error) {
     console.error("خطأ في تسجيل الحضور:", error);
@@ -46,6 +40,7 @@ export async function register(req: Request, res: Response) {
     });
   }
 }
+
 export async function getRegistrations(req: Request, res: Response) {
   try {
     const { eventId } = req.params;
@@ -82,7 +77,6 @@ export async function getRegistrations(req: Request, res: Response) {
   }
 }
 
-// الموافقة على تسجيل
 export async function approveRegistration(req: Request, res: Response) {
   try {
     const { id } = req.params;
@@ -96,12 +90,17 @@ export async function approveRegistration(req: Request, res: Response) {
     if (!result.success) {
       return res.status(400).json({
         success: false,
-        error: {
-          code: "APPROVAL_FAILED",
-          message: result.error,
-        },
+        error: { code: "APPROVAL_FAILED", message: result.error },
       });
     }
+
+    // ✅ تسجيل الموافقة
+    await logAudit({
+      userId: organizerId,
+      action: "REGISTRATION_APPROVED",
+      details: { registrationId: id, eventId: result.data?.eventId },
+      ipAddress: req.ip,
+    });
 
     return res.status(200).json({
       success: true,
@@ -120,7 +119,6 @@ export async function approveRegistration(req: Request, res: Response) {
   }
 }
 
-// رفض تسجيل
 export async function rejectRegistration(req: Request, res: Response) {
   try {
     const { id } = req.params;
@@ -134,12 +132,17 @@ export async function rejectRegistration(req: Request, res: Response) {
     if (!result.success) {
       return res.status(400).json({
         success: false,
-        error: {
-          code: "REJECTION_FAILED",
-          message: result.error,
-        },
+        error: { code: "REJECTION_FAILED", message: result.error },
       });
     }
+
+    // ✅ تسجيل الرفض
+    await logAudit({
+      userId: organizerId,
+      action: "REGISTRATION_REJECTED",
+      details: { registrationId: id, eventId: result.data?.eventId },
+      ipAddress: req.ip,
+    });
 
     return res.status(200).json({
       success: true,
@@ -157,7 +160,7 @@ export async function rejectRegistration(req: Request, res: Response) {
     });
   }
 }
-// جلب بيانات التسجيل عن طريق رمز QR (عام - بدون مصادقة)
+
 export async function getRegistrationByToken(req: Request, res: Response) {
   try {
     const { token } = req.params;
@@ -181,7 +184,7 @@ export async function getRegistrationByToken(req: Request, res: Response) {
         success: false,
         error: {
           code: "INVALID_TOKEN",
-          message: result.error,
+          message: result.error || "رمز QR غير صالح",
         },
       });
     }
@@ -197,6 +200,54 @@ export async function getRegistrationByToken(req: Request, res: Response) {
       error: {
         code: "SERVER_ERROR",
         message: "حدث خطأ أثناء جلب بيانات رمز QR",
+      },
+    });
+  }
+}
+
+export async function getWaitlist(req: Request, res: Response) {
+  try {
+    const { eventId } = req.params;
+    const organizerId = req.user!.userId;
+
+    const event = await prisma.event.findUnique({
+      where: { id: String(eventId) },
+      select: { organizerId: true },
+    });
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "EVENT_NOT_FOUND", message: "الفعالية غير موجودة" },
+      });
+    }
+
+    if (event.organizerId !== organizerId) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: "FORBIDDEN",
+          message: "ليس لديك صلاحية لعرض قائمة الانتظار",
+        },
+      });
+    }
+
+    const waitlist = await prisma.waitlist.findMany({
+      where: { eventId: String(eventId), status: "WAITING" },
+      orderBy: { registeredAt: "asc" },
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: waitlist,
+    });
+  } catch (error) {
+    console.error("خطأ في جلب قائمة الانتظار:", error);
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "SERVER_ERROR",
+        message: "حدث خطأ أثناء جلب قائمة الانتظار",
       },
     });
   }

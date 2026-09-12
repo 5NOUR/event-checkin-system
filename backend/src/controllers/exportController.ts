@@ -4,6 +4,7 @@ import {
   ExportResult,
 } from "../services/exportService";
 import { createObjectCsvStringifier } from "csv-writer";
+import { logAudit } from "../services/auditService";
 
 export async function exportCsv(req: Request, res: Response) {
   try {
@@ -67,6 +68,17 @@ export async function exportCsv(req: Request, res: Response) {
       `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
     );
     res.setHeader("Content-Length", Buffer.byteLength(csvString, "utf8"));
+    // ✅ تسجيل التصدير
+    await logAudit({
+      userId: organizerId,
+      action: "EXPORT_GENERATED",
+      details: {
+        eventId,
+        eventTitle: result.data.eventTitle,
+        recordCount: result.data.records.length,
+      },
+      ipAddress: req.ip,
+    });
 
     return res.status(200).send(csvString);
   } catch (error) {

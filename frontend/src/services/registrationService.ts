@@ -7,6 +7,7 @@ export interface RegistrationInput {
   phone?: string;
   organization?: string;
   jobTitle?: string;
+  ticketTypeId?: string; // ✅ جديد
 }
 
 export async function registerAttendee(data: RegistrationInput) {

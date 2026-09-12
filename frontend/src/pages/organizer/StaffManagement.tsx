@@ -2,7 +2,26 @@ import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import {
+  ArrowRight,
+  UserPlus,
+  Users,
+  Power,
+  PowerOff,
+  Mail,
+  AlertTriangle,
+  CheckCircle2,
+} from "lucide-react";
 import apiClient from "../../services/apiClient";
+import { Button } from "../../components/ui/Button";
+import { Input } from "../../components/ui/Input";
+import { Badge } from "../../components/ui/Badge";
+import { Card } from "../../components/ui/Card";
+import { EmptyState } from "../../components/ui/EmptyState";
+import { PageLoader } from "../../components/ui/Spinner";
 
 interface StaffMember {
   id: string;
@@ -18,285 +37,345 @@ interface StaffMember {
   };
 }
 
+const addStaffSchema = z.object({
+  email: z.string().email(),
+  name: z.string().optional(),
+});
+
+type AddStaffFormData = z.infer<typeof addStaffSchema>;
+
 export default function StaffManagement() {
   const { eventId } = useParams<{ eventId: string }>();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const token = localStorage.getItem("token");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [serverError, setServerError] = useState("");
 
-  // حالة النموذج
-  const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    reset,
+  } = useForm<AddStaffFormData>({
+    resolver: zodResolver(addStaffSchema),
+  });
 
-  // جلب قائمة الموظفين
   const { data, isLoading } = useQuery({
     queryKey: ["staff", eventId],
     queryFn: async () => {
-      const response = await apiClient.get(`/staff/event/${eventId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await apiClient.get(`/staff/event/${eventId}`);
       return response.data.data as StaffMember[];
     },
-    enabled: !!eventId && !!token,
+    enabled: !!eventId,
   });
 
-  // إضافة موظف
   const addMutation = useMutation({
-    mutationFn: async (payload: { email: string; name: string }) => {
-      const response = await apiClient.post(
-        `/staff/event/${eventId}`,
-        payload,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      return response.data;
-    },
+    mutationFn: (payload: AddStaffFormData) =>
+      apiClient.post(`/staff/event/${eventId}`, payload),
     onSuccess: () => {
-      setSuccess("تم إضافة الموظف بنجاح");
-      setError("");
-      setEmail("");
-      setName("");
+      setSuccessMessage(t("staff.successMessage"));
+      setServerError("");
+      reset();
       queryClient.invalidateQueries({ queryKey: ["staff", eventId] });
-      setTimeout(() => setSuccess(""), 3000);
+      setTimeout(() => setSuccessMessage(""), 4000);
     },
-    onError: (err: unknown) => {
-      const errorDetails = err as {
-        response?: {
-          data?: {
-            error?: {
-              message?: string;
-            };
-          };
-        };
+    onError: (error: unknown) => {
+      const err = error as {
+        response?: { data?: { error?: { message?: string } } };
       };
-
-      setError(
-        errorDetails.response?.data?.error?.message ||
-          "حدث خطأ في إضافة الموظف",
+      setServerError(
+        err.response?.data?.error?.message || t("errors.serverError"),
       );
-      setSuccess("");
+      setSuccessMessage("");
     },
   });
 
-  // إزالة موظف (تعطيل)
   const removeMutation = useMutation({
-    mutationFn: async (staffId: string) => {
-      const response = await apiClient.delete(
-        `/staff/event/${eventId}/staff/${staffId}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-      return response.data;
-    },
+    mutationFn: (staffId: string) =>
+      apiClient.delete(`/staff/event/${eventId}/staff/${staffId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["staff", eventId] });
     },
   });
 
-  // إعادة تفعيل موظف
   const reactivateMutation = useMutation({
-    mutationFn: async (staffId: string) => {
-      const response = await apiClient.patch(
+    mutationFn: (staffId: string) =>
+      apiClient.patch(
         `/staff/event/${eventId}/staff/${staffId}/reactivate`,
         {},
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      return response.data;
-    },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["staff", eventId] });
     },
   });
 
-  const handleAddStaff = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email) {
-      setError("البريد الإلكتروني مطلوب");
-      return;
-    }
-    addMutation.mutate({ email, name });
+  const onSubmit = (formData: AddStaffFormData) => {
+    setServerError("");
+    setSuccessMessage("");
+    addMutation.mutate(formData);
   };
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F7F7F5]">
-        <p className="text-[#6B6B68]">{t("common.loading")}</p>
+      <div className="container-page py-12">
+        <PageLoader label={t("common.loading")} />
       </div>
     );
   }
 
   const staffList = data || [];
+  const activeCount = staffList.filter(
+    (s) => s.isActive && s.staff.isActive,
+  ).length;
 
   return (
-    <div className="min-h-screen bg-[#F7F7F5] p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center gap-4 mb-8">
-          <button
-            onClick={() => navigate(`/organizer/events/${eventId}`)}
-            className="px-4 py-2 text-sm border border-[#E5E5E0] rounded-md hover:bg-[#171717] hover:text-white transition-colors"
-          >
-            ← رجوع
-          </button>
-          <h1 className="text-3xl font-bold text-[#171717]">
-            👥 إدارة الموظفين
-          </h1>
-        </div>
+    <div className="container-page py-8 md:py-12 max-w-4xl">
+      <header className="mb-8">
+        <button
+          onClick={() => navigate(`/organizer/events/${eventId}`)}
+          className="inline-flex items-center gap-2 text-body-sm text-ink-600 hover:text-ink-900 transition-colors mb-4"
+        >
+          <ArrowRight
+            className="w-4 h-4 rtl:rotate-0 ltr:rotate-180"
+            strokeWidth={1.75}
+          />
+          <span>{t("staff.backToDetails")}</span>
+        </button>
 
-        {/* نموذج الإضافة */}
-        <div className="bg-white border border-[#E5E5E0] rounded-lg p-6 mb-8">
-          <h2 className="text-lg font-bold text-[#171717] mb-4">
-            إضافة موظف جديد
+        <p className="label-overline mb-2">{t("staff.label")}</p>
+        <h1 className="heading-h1">{t("staff.title")}</h1>
+        <p className="mt-1.5 text-body-sm text-ink-600">
+          {t("staff.subtitle")}
+        </p>
+      </header>
+
+      <Card padding="lg" className="mb-8">
+        <div className="flex items-center gap-2.5 mb-5">
+          <UserPlus className="w-4 h-4 text-gold-500" strokeWidth={1.75} />
+          <h2 className="text-h3 font-semibold text-ink-900 tracking-tight">
+            {t("staff.addStaff")}
           </h2>
-          <form onSubmit={handleAddStaff} className="space-y-4">
-            {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
-                {error}
-              </div>
-            )}
-            {success && (
-              <div className="p-3 bg-green-50 border border-green-200 rounded-md text-green-700 text-sm">
-                {success}
-              </div>
-            )}
-            <div>
-              <label className="block text-sm font-medium text-[#171717] mb-1">
-                البريد الإلكتروني *
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full px-4 py-2 border border-[#E5E5E0] rounded-md focus:outline-none focus:ring-2 focus:ring-[#B08D57]"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#171717] mb-1">
-                الاسم (اختياري)
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-2 border border-[#E5E5E0] rounded-md focus:outline-none focus:ring-2 focus:ring-[#B08D57]"
-                placeholder="سيتم استخدام البريد كاسم افتراضي"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={addMutation.isPending}
-              className="px-6 py-2 bg-[#171717] text-white rounded-md hover:bg-[#2a2a2a] transition-colors disabled:opacity-50"
-            >
-              {addMutation.isPending ? "جاري الإضافة..." : "إضافة موظف"}
-            </button>
-          </form>
         </div>
 
-        {/* قائمة الموظفين */}
-        <div className="bg-white border border-[#E5E5E0] rounded-lg overflow-hidden">
-          <div className="px-6 py-4 border-b border-[#E5E5E0]">
-            <h2 className="text-lg font-bold text-[#171717]">
-              الموظفون الحاليون
+        {successMessage && (
+          <Banner
+            variant="success"
+            icon={<CheckCircle2 size={16} strokeWidth={2} />}
+            text={successMessage}
+          />
+        )}
+
+        {serverError && (
+          <Banner
+            variant="danger"
+            icon={<AlertTriangle size={16} strokeWidth={2} />}
+            text={serverError}
+          />
+        )}
+
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <Input
+            label={t("staff.email")}
+            type="email"
+            placeholder={t("staff.emailPlaceholder")}
+            leftIcon={<Mail size={16} strokeWidth={1.75} />}
+            required
+            dir="ltr"
+            error={errors.email ? t("validation.emailInvalid") : undefined}
+            hint={t("staff.emailHint")}
+            {...register("email")}
+          />
+
+          <Input
+            label={t("staff.name")}
+            placeholder={t("staff.namePlaceholder")}
+            error={errors.name?.message}
+            hint={t("staff.nameHint")}
+            {...register("name")}
+          />
+
+          <Button
+            type="submit"
+            variant="accent"
+            loading={addMutation.isPending}
+            leftIcon={<UserPlus size={16} strokeWidth={2} />}
+          >
+            {t("staff.submit")}
+          </Button>
+        </form>
+      </Card>
+
+      <Card padding="none">
+        <div className="px-6 py-5 border-b border-ink-200 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <Users className="w-4 h-4 text-gold-500" strokeWidth={1.75} />
+            <h2 className="text-h3 font-semibold text-ink-900 tracking-tight">
+              {t("staff.currentTeam")}
             </h2>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-[#F7F7F5]">
-                <tr className="text-right">
-                  <th className="px-6 py-3 text-sm font-medium text-[#6B6B68]">
-                    الاسم
-                  </th>
-                  <th className="px-6 py-3 text-sm font-medium text-[#6B6B68]">
-                    البريد
-                  </th>
-                  <th className="px-6 py-3 text-sm font-medium text-[#6B6B68]">
-                    الحالة
-                  </th>
-                  <th className="px-6 py-3 text-sm font-medium text-[#6B6B68]">
-                    تاريخ التعيين
-                  </th>
-                  <th className="px-6 py-3 text-sm font-medium text-[#6B6B68]">
-                    الإجراءات
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {staffList.map((staff) => (
-                  <tr
-                    key={staff.id}
-                    className="border-b border-[#E5E5E0] last:border-0"
-                  >
-                    <td className="px-6 py-3 text-sm text-[#171717]">
-                      {staff.staff.name}
-                    </td>
-                    <td className="px-6 py-3 text-sm text-[#6B6B68]">
-                      {staff.staff.email}
-                    </td>
-                    <td className="px-6 py-3 text-sm">
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          staff.isActive && staff.staff.isActive
-                            ? "bg-green-100 text-green-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {staff.isActive && staff.staff.isActive
-                          ? "نشط"
-                          : "غير نشط"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-3 text-sm text-[#6B6B68]">
-                      {new Date(staff.assignedAt).toLocaleDateString("ar-EG")}
-                    </td>
-                    <td className="px-6 py-3 text-sm">
-                      {staff.isActive && staff.staff.isActive ? (
-                        <button
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                "هل أنت متأكد من تعطيل هذا الموظف؟",
-                              )
-                            ) {
-                              removeMutation.mutate(staff.staffId);
-                            }
-                          }}
-                          className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors"
-                          disabled={removeMutation.isPending}
-                        >
-                          تعطيل
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => {
-                            reactivateMutation.mutate(staff.staffId);
-                          }}
-                          className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 transition-colors"
-                          disabled={reactivateMutation.isPending}
-                        >
-                          إعادة تفعيل
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {staffList.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-6 py-8 text-center text-[#6B6B68]"
-                    >
-                      لا يوجد موظفون معينون لهذه الفعالية
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+          <span className="text-caption text-ink-500 tabular-nums">
+            {t("staff.activeCount", { count: activeCount })} /{" "}
+            {staffList.length}
+          </span>
+        </div>
+
+        {staffList.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title={t("staff.noStaffTitle")}
+            description={t("staff.noStaffDescription")}
+          />
+        ) : (
+          <ul className="divide-y divide-ink-100">
+            {staffList.map((staff) => (
+              <StaffRow
+                key={staff.id}
+                staff={staff}
+                onRemove={() => {
+                  if (
+                    window.confirm(
+                      t("staff.confirmDeactivate", {
+                        name: staff.staff.name,
+                      }),
+                    )
+                  ) {
+                    removeMutation.mutate(staff.staffId);
+                  }
+                }}
+                onReactivate={() => reactivateMutation.mutate(staff.staffId)}
+                isRemoving={
+                  removeMutation.isPending &&
+                  removeMutation.variables === staff.staffId
+                }
+                isReactivating={
+                  reactivateMutation.isPending &&
+                  reactivateMutation.variables === staff.staffId
+                }
+                t={t}
+              />
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ============================================
+// Staff Row
+// ============================================
+function StaffRow({
+  staff,
+  onRemove,
+  onReactivate,
+  isRemoving,
+  isReactivating,
+  t,
+}: {
+  staff: StaffMember;
+  onRemove: () => void;
+  onReactivate: () => void;
+  isRemoving: boolean;
+  isReactivating: boolean;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  const isActive = staff.isActive && staff.staff.isActive;
+  const initial = staff.staff.name.charAt(0).toUpperCase();
+
+  return (
+    <li className="p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div
+          className={[
+            "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
+            isActive ? "bg-gold-100 text-gold-600" : "bg-ink-100 text-ink-500",
+          ].join(" ")}
+        >
+          <span className="text-body font-semibold">{initial}</span>
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-body font-medium text-ink-900 truncate">
+              {staff.staff.name}
+            </p>
+            {isActive ? (
+              <Badge variant="success" size="sm" dot>
+                {t("staff.active")}
+              </Badge>
+            ) : (
+              <Badge variant="default" size="sm">
+                {t("staff.inactive")}
+              </Badge>
+            )}
           </div>
+          <p className="text-caption text-ink-500 truncate mt-0.5" dir="ltr">
+            {staff.staff.email}
+          </p>
+          <p className="text-caption text-ink-400 mt-0.5 tabular-nums">
+            {t("staff.assignedAt")}:{" "}
+            {new Date(staff.assignedAt).toLocaleDateString("ar-EG", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })}
+          </p>
         </div>
       </div>
+
+      <div className="flex-shrink-0">
+        {isActive ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            loading={isRemoving}
+            onClick={onRemove}
+            leftIcon={<PowerOff size={14} strokeWidth={1.75} />}
+            className="!text-danger-600 hover:!bg-danger-100"
+          >
+            {t("staff.deactivate")}
+          </Button>
+        ) : (
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={isReactivating}
+            onClick={onReactivate}
+            leftIcon={<Power size={14} strokeWidth={1.75} />}
+          >
+            {t("staff.reactivate")}
+          </Button>
+        )}
+      </div>
+    </li>
+  );
+}
+
+// ============================================
+// Banner
+// ============================================
+function Banner({
+  variant,
+  icon,
+  text,
+}: {
+  variant: "success" | "danger";
+  icon: React.ReactNode;
+  text: string;
+}) {
+  const styles = {
+    success: "bg-success-100 border-success-500/20 text-success-700",
+    danger: "bg-danger-100 border-danger-500/20 text-danger-700",
+  };
+
+  return (
+    <div
+      className={`mb-4 px-4 py-3 border rounded-md flex items-center gap-2.5 ${styles[variant]}`}
+      role="alert"
+    >
+      {icon}
+      <span className="text-body-sm font-medium">{text}</span>
     </div>
   );
 }

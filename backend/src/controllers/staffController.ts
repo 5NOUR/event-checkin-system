@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import * as staffService from "../services/staffService";
-
+import { logAudit } from "../services/auditService";
 // جلب قائمة الموظفين لفعالية
 export async function getEventStaff(req: Request, res: Response) {
   try {
@@ -63,14 +63,29 @@ export async function addStaffToEvent(req: Request, res: Response) {
     );
 
     if (!result.success) {
-      return res.status(400).json({
+      // ✅ تحديد رمز الحالة بناءً على الـ code
+      const statusCode = result.code === "FORBIDDEN" ? 403 : 400;
+
+      return res.status(statusCode).json({
         success: false,
         error: {
-          code: "ADD_STAFF_FAILED",
+          code: result.code || "ADD_STAFF_FAILED",
           message: result.error,
         },
       });
     }
+
+    // ✅ تسجيل إضافة موظف
+    await logAudit({
+      userId: organizerId,
+      action: "STAFF_ASSIGNED",
+      details: {
+        staffId: result.data?.staff.id,
+        staffEmail: result.data?.staff.email,
+        eventId,
+      },
+      ipAddress: req.ip,
+    });
 
     return res.status(201).json({
       success: true,
@@ -110,7 +125,12 @@ export async function removeStaffFromEvent(req: Request, res: Response) {
         },
       });
     }
-
+    await logAudit({
+      userId: organizerId,
+      action: "STAFF_REMOVED",
+      details: { staffId, eventId },
+      ipAddress: req.ip,
+    });
     return res.status(200).json({
       success: true,
       data: result.data,
@@ -141,14 +161,21 @@ export async function reactivateStaff(req: Request, res: Response) {
     );
 
     if (!result.success) {
-      return res.status(400).json({
+      const statusCode = result.code === "FORBIDDEN" ? 403 : 400;
+      return res.status(statusCode).json({
         success: false,
         error: {
-          code: "REACTIVATE_STAFF_FAILED",
+          code: result.code || "REMOVE_STAFF_FAILED",
           message: result.error,
         },
       });
     }
+    await logAudit({
+      userId: organizerId,
+      action: "STAFF_REACTIVATED",
+      details: { staffId, eventId },
+      ipAddress: req.ip,
+    });
 
     return res.status(200).json({
       success: true,

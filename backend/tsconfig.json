@@ -1,18 +1,31 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "module": "Node16",
-    "lib": ["ES2020"],
+    "lib": ["ES2022"],
     "outDir": "./dist",
-    "rootDir": ".", // ← تغيير من "./src" إلى "."
+    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "moduleResolution": "node16", // ← تغيير من "node" إلى "node16"
-    "types": ["node"]
+    "moduleResolution": "node16",
+    "types": ["node"],
+    "sourceMap": false,
+    "removeComments": true,
+    "noEmitOnError": true,
+    "declaration": false,
+    "allowJs": false
   },
-  "include": ["src/**/*", "prisma/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "tests",
+    "prisma",
+    "**/*.test.ts",
+    "vitest.config.ts",
+    "vitest.config.mts"
+  ]
 }

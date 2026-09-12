@@ -1,32 +1,37 @@
 import { z } from "zod";
 
-// التحقق من صحة بيانات إنشاء الفعالية
 export const createEventSchema = z.object({
-  title: z.string().min(3, "العنوان يجب أن يكون على الأقل 3 أحرف"),
-  description: z.string().min(10, "الوصف يجب أن يكون على الأقل 10 أحرف"),
-  location: z.string().min(3, "الموقع مطلوب"),
-  date: z
+  title: z.string().min(3, "العنوان يجب أن يكون 3 أحرف على الأقل").max(200),
+  description: z
     .string()
-    .datetime({ message: "التاريخ يجب أن يكون بصيغة صالحة (ISO 8601)" }),
+    .min(10, "الوصف يجب أن يكون 10 أحرف على الأقل")
+    .max(5000),
+  location: z.string().min(3, "الموقع مطلوب").max(300),
+  date: z.string().datetime({ message: "التاريخ غير صالح" }),
   startTime: z
     .string()
-    .regex(
-      /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/,
-      "وقت البدء يجب أن يكون بصيغة HH:MM",
-    ),
+    .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "وقت البدء غير صالح (HH:MM)"),
   endTime: z
     .string()
-    .regex(
-      /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/,
-      "وقت الانتهاء يجب أن يكون بصيغة HH:MM",
-    ),
-  capacity: z.number().int().positive("السعة يجب أن تكون عدداً صحيحاً موجباً"),
-  registrationDeadline: z
-    .string()
-    .datetime({ message: "موعد التسجيل يجب أن يكون بصيغة صالحة" })
-    .optional(),
-  coverImageUrl: z.string().url("يجب أن تكون رابط صورة صالحاً").optional(),
+    .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "وقت الانتهاء غير صالح (HH:MM)"),
+  capacity: z
+    .number()
+    .int()
+    .positive("السعة يجب أن تكون أكبر من 0")
+    .max(1000000),
+  registrationDeadline: z.string().datetime().optional().nullable(),
+  coverImageUrl: z.string().url().optional().nullable(),
 });
 
-// التحقق من صحة بيانات تحديث الفعالية (جميع الحقول اختيارية)
 export const updateEventSchema = createEventSchema.partial();
+
+export const updateEventStatusSchema = z.object({
+  status: z.enum([
+    "DRAFT",
+    "PUBLISHED",
+    "REGISTRATION_CLOSED",
+    "ONGOING",
+    "COMPLETED",
+    "CANCELLED",
+  ]),
+});

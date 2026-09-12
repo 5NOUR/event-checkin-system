@@ -1,8 +1,31 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 import { Html5Qrcode } from "html5-qrcode";
+import {
+  Camera,
+  CameraOff,
+  LogOut,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Clock,
+  DoorOpen,
+  Ticket,
+  ScanLine,
+  RotateCcw,
+  User as UserIcon,
+} from "lucide-react";
 import apiClient from "../../services/apiClient";
+import {
+  getStaffEvents,
+  type StaffEvent,
+} from "../../services/staffEventsService";
+import { Button } from "../../components/ui/Button";
+import { Card } from "../../components/ui/Card";
+import { EmptyState } from "../../components/ui/EmptyState";
+import { PageLoader } from "../../components/ui/Spinner";
 
 interface ScanResult {
   success: boolean;
@@ -12,6 +35,7 @@ interface ScanResult {
     attendeeEmail: string;
     eventTitle: string;
     checkedInAt: string;
+    gateName: string | null;
   };
   error?: {
     code: string;
@@ -20,129 +44,79 @@ interface ScanResult {
   };
 }
 
+interface Gate {
+  id: string;
+  name: string;
+}
+
 export default function StaffScanner() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+
+  const [selectedEventSlug, setSelectedEventSlug] = useState("");
+  const [selectedGateId, setSelectedGateId] = useState("");
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [isScanning, setIsScanning] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [isCameraReady, setIsCameraReady] = useState(false);
+  const hasSetDefaultEvent = useRef(false);
 
-  // ✅ قراءة اسم المستخدم من localStorage مباشرة (بدون useEffect)
   const [userName] = useState(() => {
     const userData = localStorage.getItem("user");
     if (userData) {
       try {
         const user = JSON.parse(userData);
-        return user.name || user.email || "موظف";
+        return user.name || user.email;
       } catch {
-        return "موظف";
+        return "";
       }
     }
-    return "موظف";
+    return "";
   });
 
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-  const lastScannedToken = useRef<string>("");
-  const isMounted = useRef<boolean>(true);
-  const isScanningRef = useRef<boolean>(false);
+  const {
+    data: staffEvents,
+    isLoading: eventsLoading,
+    error: eventsError,
+  } = useQuery({
+    queryKey: ["staff-events"],
+    queryFn: getStaffEvents,
+    retry: 1,
+  });
 
-  const safeStopScanner = async () => {
-    if (scannerRef.current && isScanningRef.current) {
-      try {
-        await scannerRef.current.stop();
-        await scannerRef.current.clear();
-        isScanningRef.current = false;
-      } catch {
-        // نتجاهل الخطأ إذا كان الماسح متوقفاً بالفعل
-      }
-    }
-  };
-
-  const onScanSuccess = async (decodedText: string) => {
-    if (lastScannedToken.current === decodedText || !isMounted.current) {
-      return;
-    }
-    lastScannedToken.current = decodedText;
-
-    if (scannerRef.current && isScanningRef.current) {
-      try {
-        await scannerRef.current.pause();
-        isScanningRef.current = false;
-      } catch {
-        // نتجاهل
-      }
-    }
-    setIsScanning(false);
-
-    try {
-      const token = localStorage.getItem("token");
-      const eventSlug =
-        localStorage.getItem("selectedEventId") || "tech-expo-2026";
-
-      const eventResponse = await apiClient.get(`/events/public/${eventSlug}`);
-      const actualEventId = eventResponse.data.data.id;
-
-      const response = await apiClient.post(
-        "/checkin/verify",
-        { token: decodedText, eventId: actualEventId },
-        { headers: { Authorization: `Bearer ${token}` } },
+  const { data: gates } = useQuery({
+    queryKey: ["gates", selectedEventSlug],
+    queryFn: async () => {
+      if (!selectedEventSlug) return [] as Gate[];
+      const eventResponse = await apiClient.get(
+        `/events/public/${selectedEventSlug}`,
       );
-
-      if (isMounted.current) {
-        setScanResult({
-          success: true,
-          data: response.data.data,
-          message: response.data.message,
-        });
-      }
-    } catch (error: unknown) {
-      if (isMounted.current) {
-        let errorMessage = "حدث خطأ غير معروف";
-        let errorCode = "UNKNOWN";
-        let checkedInAt: string | undefined;
-
-        if (error && typeof error === "object" && "response" in error) {
-          const err = error as {
-            response?: {
-              data?: {
-                error?: {
-                  code?: string;
-                  message?: string;
-                  checkedInAt?: string;
-                };
-              };
-            };
-          };
-          errorMessage = err.response?.data?.error?.message || errorMessage;
-          errorCode = err.response?.data?.error?.code || errorCode;
-          checkedInAt = err.response?.data?.error?.checkedInAt;
-        }
-
-        setScanResult({
-          success: false,
-          error: { code: errorCode, message: errorMessage, checkedInAt },
-        });
-      }
-    }
-  };
-
-  // ✅ دالة فارغة ولكن مع تعليق لتجنب تحذير no-empty
-  const onScanError = () => {
-    // هذا الخطأ طبيعي (عند عدم العثور على رمز)
-    // لا نقوم بأي إجراء لتجنب تكرار الرسائل
-  };
+      const eventId = eventResponse.data.data.id;
+      const response = await apiClient.get(`/checkin/gates/${eventId}`);
+      return response.data.data as Gate[];
+    },
+    enabled: !!selectedEventSlug,
+  });
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const user = localStorage.getItem("user");
-    if (!token || !user) {
+    if (
+      staffEvents &&
+      staffEvents.length > 0 &&
+      !selectedEventSlug &&
+      !hasSetDefaultEvent.current
+    ) {
+      setSelectedEventSlug(staffEvents[0].slug);
+      hasSetDefaultEvent.current = true;
+    }
+  }, [staffEvents, selectedEventSlug]);
+
+  useEffect(() => {
+    const userData = localStorage.getItem("user");
+    if (!userData) {
       navigate("/login");
       return;
     }
     try {
-      const userData = JSON.parse(user);
-      if (!["STAFF", "ORGANIZER", "ADMIN"].includes(userData.role)) {
+      const user = JSON.parse(userData);
+      if (!["STAFF", "ORGANIZER", "ADMIN"].includes(user.role)) {
         navigate("/login");
       }
     } catch {
@@ -150,16 +124,285 @@ export default function StaffScanner() {
     }
   }, [navigate]);
 
+  const handleLogout = useCallback(async () => {
+    try {
+      await fetch(
+        `${import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1"}/auth/logout`,
+        { method: "POST", credentials: "include" },
+      );
+    } catch {
+      // ignore
+    }
+    localStorage.removeItem("user");
+    localStorage.removeItem("selectedEventId");
+    window.dispatchEvent(new Event("user-changed"));
+    navigate("/login");
+  }, [navigate]);
+
+  if (eventsLoading) {
+    return (
+      <div className="min-h-screen bg-ink-950 flex items-center justify-center">
+        <PageLoader label={t("scanner.loadingEvents")} />
+      </div>
+    );
+  }
+
+  if (eventsError || !staffEvents) {
+    return (
+      <div className="min-h-screen bg-ink-50 flex items-center justify-center px-4">
+        <Card padding="lg" className="max-w-md w-full">
+          <EmptyState
+            icon={AlertTriangle}
+            title={t("scanner.errorLoadingEvents")}
+            description={t("scanner.errorLoadingEventsDescription")}
+            action={{
+              label: t("scanner.backToLogin"),
+              onClick: () => navigate("/login"),
+            }}
+          />
+        </Card>
+      </div>
+    );
+  }
+
+  if (staffEvents.length === 0) {
+    return (
+      <div className="min-h-screen bg-ink-50 flex items-center justify-center px-4">
+        <Card padding="lg" className="max-w-md w-full">
+          <EmptyState
+            icon={DoorOpen}
+            title={t("scanner.noEventsTitle")}
+            description={t("scanner.noEventsDescription")}
+            action={{
+              label: t("scanner.logoutAction"),
+              onClick: handleLogout,
+            }}
+          />
+        </Card>
+      </div>
+    );
+  }
+
+  if (!selectedEventSlug) {
+    return (
+      <div className="min-h-screen bg-ink-950 flex items-center justify-center">
+        <PageLoader label={t("common.loading")} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-ink-950 text-white">
+      <header className="sticky top-0 z-30 bg-ink-950/95 backdrop-blur border-b border-white/8">
+        <div className="container-page">
+          <div className="flex items-center justify-between h-14 gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-md bg-gold-500/15 flex items-center justify-center flex-shrink-0">
+                <ScanLine
+                  className="w-4 h-4 text-gold-500"
+                  strokeWidth={1.75}
+                />
+              </div>
+              <div className="min-w-0">
+                <p className="text-micro uppercase tracking-wider font-semibold text-ink-500 leading-tight">
+                  {t("scanner.staffLabel")}
+                </p>
+                <p className="text-body-sm font-medium text-white leading-tight truncate">
+                  {userName}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleLogout}
+              className="w-8 h-8 inline-flex items-center justify-center text-ink-400 hover:text-white hover:bg-white/10 rounded-md transition-colors"
+              aria-label={t("scanner.logout")}
+            >
+              <LogOut className="w-4 h-4" strokeWidth={1.75} />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="container-page py-5 max-w-lg">
+        <div className="space-y-3 mb-5">
+          <SelectField
+            label={t("scanner.event")}
+            value={selectedEventSlug}
+            onChange={(value) => {
+              setSelectedEventSlug(value);
+              setSelectedGateId("");
+            }}
+            icon={<Ticket size={14} strokeWidth={1.75} />}
+          >
+            {staffEvents.map((event: StaffEvent) => (
+              <option key={event.id} value={event.slug}>
+                {event.title}
+              </option>
+            ))}
+          </SelectField>
+
+          {gates && gates.length > 0 && (
+            <SelectField
+              label={t("scanner.gate")}
+              value={selectedGateId}
+              onChange={setSelectedGateId}
+              icon={<DoorOpen size={14} strokeWidth={1.75} />}
+            >
+              <option value="">{t("scanner.noGate")}</option>
+              {gates.map((gate) => (
+                <option key={gate.id} value={gate.id}>
+                  {gate.name}
+                </option>
+              ))}
+            </SelectField>
+          )}
+        </div>
+
+        <ScannerView
+          eventSlug={selectedEventSlug}
+          gateId={selectedGateId}
+          scanResult={scanResult}
+          setScanResult={setScanResult}
+          isScanning={isScanning}
+          setIsScanning={setIsScanning}
+        />
+      </main>
+    </div>
+  );
+}
+
+// ============================================
+// SCANNER VIEW
+// ============================================
+function ScannerView({
+  eventSlug,
+  gateId,
+  scanResult,
+  setScanResult,
+  isScanning,
+  setIsScanning,
+}: {
+  eventSlug: string;
+  gateId: string;
+  scanResult: ScanResult | null;
+  setScanResult: (result: ScanResult | null) => void;
+  isScanning: boolean;
+  setIsScanning: (value: boolean) => void;
+}) {
+  const { t } = useTranslation();
+  const [isCameraReady, setIsCameraReady] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const lastScannedToken = useRef("");
+  const isMounted = useRef(true);
+  const isScanningRef = useRef(false);
+
+  const eventSlugRef = useRef(eventSlug);
+  const gateIdRef = useRef(gateId);
+
+  useEffect(() => {
+    eventSlugRef.current = eventSlug;
+  }, [eventSlug]);
+
+  useEffect(() => {
+    gateIdRef.current = gateId;
+  }, [gateId]);
+
+  const stopScanner = useCallback(async () => {
+    if (scannerRef.current && isScanningRef.current) {
+      try {
+        await scannerRef.current.stop();
+        await scannerRef.current.clear();
+      } catch {
+        // ignore
+      }
+      isScanningRef.current = false;
+    }
+  }, []);
+
+  const handleScan = useCallback(
+    async (decodedText: string) => {
+      if (lastScannedToken.current === decodedText) return;
+      lastScannedToken.current = decodedText;
+
+      if (scannerRef.current && isScanningRef.current) {
+        try {
+          await scannerRef.current.pause();
+          isScanningRef.current = false;
+        } catch {
+          // ignore
+        }
+      }
+      setIsScanning(false);
+
+      try {
+        const currentSlug = eventSlugRef.current;
+        if (!currentSlug) {
+          throw new Error(t("errors.unexpectedError"));
+        }
+
+        const eventResponse = await apiClient.get(
+          `/events/public/${currentSlug}`,
+        );
+        const actualEventId = eventResponse.data.data.id;
+
+        const response = await apiClient.post("/checkin/verify", {
+          token: decodedText,
+          eventId: actualEventId,
+          gateId: gateIdRef.current || undefined,
+        });
+
+        if (isMounted.current) {
+          setScanResult({
+            success: true,
+            data: response.data.data,
+            message: response.data.message,
+          });
+        }
+      } catch (error: unknown) {
+        if (isMounted.current) {
+          let errMsg = t("errors.unexpectedError");
+          let errCode = "UNKNOWN";
+          let checkedInAt: string | undefined;
+
+          if (error && typeof error === "object" && "response" in error) {
+            const err = error as {
+              response?: {
+                data?: {
+                  error?: {
+                    code?: string;
+                    message?: string;
+                    checkedInAt?: string;
+                  };
+                };
+              };
+            };
+            errMsg = err.response?.data?.error?.message || errMsg;
+            errCode = err.response?.data?.error?.code || errCode;
+            checkedInAt = err.response?.data?.error?.checkedInAt;
+          }
+
+          setScanResult({
+            success: false,
+            error: { code: errCode, message: errMsg, checkedInAt },
+          });
+        }
+      }
+    },
+    [setScanResult, setIsScanning, t],
+  );
+
   useEffect(() => {
     isMounted.current = true;
     let mounted = true;
 
-    const startScanner = async () => {
-      try {
-        if (scannerRef.current) {
-          await safeStopScanner();
-        }
+    const initScanner = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      if (!mounted) return;
 
+      try {
         const html5QrCode = new Html5Qrcode("scanner-container");
         scannerRef.current = html5QrCode;
 
@@ -167,45 +410,48 @@ export default function StaffScanner() {
           { facingMode: "environment" },
           {
             fps: 15,
-            qrbox: { width: 250, height: 250 },
+            qrbox: { width: 240, height: 240 },
             aspectRatio: 1.0,
           },
-          onScanSuccess,
-          onScanError,
+          (text) => handleScan(text),
+          () => {
+            // ignore
+          },
         );
 
         if (mounted && isMounted.current) {
           isScanningRef.current = true;
           setIsCameraReady(true);
+          setErrorMessage("");
         }
-      } catch {
+      } catch (error) {
+        console.error("Camera error:", error);
         if (mounted && isMounted.current) {
-          setErrorMessage(
-            "تعذر الوصول إلى الكاميرا. يرجى التأكد من منح الصلاحية.",
-          );
+          setErrorMessage(t("scanner.cameraError"));
         }
       }
     };
 
-    startScanner();
+    initScanner();
 
     return () => {
       mounted = false;
       isMounted.current = false;
-      safeStopScanner().then(() => {
+      stopScanner().then(() => {
         if (scannerRef.current) {
           try {
             scannerRef.current.clear();
           } catch {
-            // نتجاهل
+            // ignore
           }
           scannerRef.current = null;
         }
       });
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const restartScanner = async () => {
+  const restartScanner = useCallback(async () => {
     setScanResult(null);
     setIsScanning(true);
     lastScannedToken.current = "";
@@ -216,136 +462,291 @@ export default function StaffScanner() {
         isScanningRef.current = true;
       } catch {
         try {
-          await safeStopScanner();
+          await stopScanner();
           if (scannerRef.current) {
             await scannerRef.current.start(
               { facingMode: "environment" },
-              { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
-              onScanSuccess,
-              onScanError,
+              {
+                fps: 15,
+                qrbox: { width: 240, height: 240 },
+                aspectRatio: 1.0,
+              },
+              (text) => handleScan(text),
+              () => {},
             );
             isScanningRef.current = true;
           }
         } catch {
-          setErrorMessage("حدث خطأ في إعادة تشغيل الكاميرا");
+          setErrorMessage(t("errors.unexpectedError"));
         }
       }
     }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    localStorage.removeItem("selectedEventId");
-    navigate("/login");
-  };
+  }, [handleScan, setScanResult, setIsScanning, stopScanner, t]);
 
   return (
-    <div className="min-h-screen bg-[#F7F7F5] p-4">
-      <div className="max-w-md mx-auto">
-        {/* ترحيب */}
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <p className="text-sm text-[#6B6B68]">مرحباً،</p>
-            <h1 className="text-xl font-bold text-[#171717]">{userName}</h1>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 text-sm border border-[#E5E5E0] rounded-md hover:bg-[#171717] hover:text-white transition-colors"
-          >
-            {t("nav.logout")}
-          </button>
-        </div>
-
-        {/* منطقة الكاميرا */}
+    <div className="relative">
+      <div
+        className="relative aspect-square rounded-xl overflow-hidden bg-ink-900 border border-white/8"
+        style={{ isolation: "isolate" }}
+      >
         <div
-          className="bg-black rounded-lg overflow-hidden shadow-lg relative"
-          style={{ aspectRatio: "1/1" }}
-        >
-          <div id="scanner-container" className="w-full h-full"></div>
+          id="scanner-container"
+          className="w-full h-full [&_video]:object-cover [&_video]:w-full [&_video]:h-full"
+        />
 
-          {!isCameraReady && !errorMessage && (
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-              <div className="text-white text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-4 border-white border-t-transparent mx-auto mb-3"></div>
-                <p>جاري تهيئة الكاميرا...</p>
+        {!isCameraReady && !errorMessage && (
+          <div className="absolute inset-0 flex items-center justify-center bg-ink-950/70 backdrop-blur-sm">
+            <div className="text-center">
+              <div className="relative">
+                <div className="w-16 h-16 rounded-full border-2 border-gold-500/30 border-t-gold-500 animate-spin mx-auto" />
+                <Camera
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-5 h-5 text-gold-500"
+                  strokeWidth={1.5}
+                />
               </div>
+              <p className="mt-4 text-body-sm text-ink-300">
+                {t("scanner.initializingCamera")}
+              </p>
             </div>
-          )}
-
-          {!isScanning && scanResult && (
-            <div className="absolute inset-0 bg-black/70 flex items-center justify-center p-4">
-              <div className="text-white text-center">
-                {scanResult.success ? (
-                  <div className="space-y-2">
-                    <div className="text-6xl mb-2">✅</div>
-                    <p className="text-2xl font-bold text-green-400">
-                      تم الدخول!
-                    </p>
-                    <p className="text-lg text-white">
-                      {scanResult.data?.attendeeName}
-                    </p>
-                    <p className="text-sm text-gray-300">
-                      {scanResult.data?.eventTitle}
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      {scanResult.data?.checkedInAt &&
-                        new Date(
-                          scanResult.data.checkedInAt,
-                        ).toLocaleTimeString("ar-EG")}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="text-6xl mb-2">❌</div>
-                    <p className="text-xl font-bold text-red-400">فشل الدخول</p>
-                    <p className="text-white">{scanResult.error?.message}</p>
-                    {scanResult.error?.checkedInAt && (
-                      <p className="text-xs text-gray-400">
-                        تم الدخول مسبقاً في:{" "}
-                        {new Date(
-                          scanResult.error.checkedInAt,
-                        ).toLocaleTimeString("ar-EG")}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {errorMessage && (
-          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
-            {errorMessage}
           </div>
         )}
 
-        <div className="mt-4 flex gap-3">
-          {!isScanning && (
-            <button
-              onClick={restartScanner}
-              className="flex-1 px-6 py-4 bg-[#171717] text-white font-medium rounded-md text-lg hover:bg-[#2a2a2a] transition-colors"
-            >
-              مسح مرة أخرى
-            </button>
-          )}
-          {isScanning && isCameraReady && (
-            <div className="flex-1 text-center text-sm text-[#6B6B68] py-2">
-              ⏳ وجه الكاميرا نحو رمز QR
+        {errorMessage && (
+          <div className="absolute inset-0 flex items-center justify-center bg-ink-950/90 p-6">
+            <div className="text-center max-w-xs">
+              <div className="w-12 h-12 rounded-full bg-danger-500/15 flex items-center justify-center mx-auto mb-3">
+                <CameraOff
+                  className="w-5 h-5 text-danger-500"
+                  strokeWidth={1.5}
+                />
+              </div>
+              <p className="text-body-sm text-white">{errorMessage}</p>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        <div className="mt-6 p-4 bg-white border border-[#E5E5E0] rounded-md text-sm text-[#6B6B68] space-y-1">
-          <p className="font-medium text-[#171717]">📌 تعليمات:</p>
-          <ul className="list-disc list-inside space-y-1 pr-4">
-            <li>وجّه الكاميرا نحو رمز QR الخاص بالحضور.</li>
-            <li>سيتم تسجيل الدخول تلقائياً عند مسح الرمز.</li>
-            <li>تأكد من أن الحضور تمت الموافقة على تسجيله مسبقاً.</li>
-          </ul>
+        {isCameraReady && isScanning && !errorMessage && (
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[70%] h-[70%]">
+              <span className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-gold-500 rounded-tl-md" />
+              <span className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-gold-500 rounded-tr-md" />
+              <span className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-gold-500 rounded-bl-md" />
+              <span className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-gold-500 rounded-br-md" />
+              <div className="absolute inset-x-2 top-1/2 h-0.5 bg-gradient-to-r from-transparent via-gold-500 to-transparent animate-pulse" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {!isScanning && scanResult && (
+        <ResultPanel result={scanResult} onRestart={restartScanner} />
+      )}
+
+      {isScanning && isCameraReady && (
+        <div className="mt-5 flex items-center justify-center gap-2 text-body-sm text-ink-400">
+          <div className="w-1.5 h-1.5 rounded-full bg-gold-500 animate-pulse" />
+          <span>{t("scanner.scanInstruction")}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================
+// Select Field
+// ============================================
+function SelectField({
+  label,
+  value,
+  onChange,
+  icon,
+  children,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="block text-micro uppercase tracking-wider font-semibold text-ink-500 mb-1.5">
+        {label}
+      </label>
+      <div className="relative">
+        {icon && (
+          <span className="absolute inset-y-0 start-0 flex items-center ps-3 text-ink-500 pointer-events-none">
+            {icon}
+          </span>
+        )}
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="block w-full h-11 ps-9 pe-3 rounded-md border border-white/10 bg-white/5 text-body text-white appearance-none focus:outline-none focus:border-gold-500 focus:ring-1 focus:ring-gold-500/30 cursor-pointer"
+        >
+          {children}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// Result Panel
+// ============================================
+function ResultPanel({
+  result,
+  onRestart,
+}: {
+  result: ScanResult;
+  onRestart: () => void;
+}) {
+  const { t } = useTranslation();
+
+  if (result.success && result.data) {
+    return (
+      <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-ink-950/95 backdrop-blur-sm rounded-xl animate-fade-in">
+        <div className="w-full max-w-sm">
+          <div className="flex justify-center mb-5">
+            <div className="w-20 h-20 rounded-full bg-success-500/15 flex items-center justify-center">
+              <CheckCircle2
+                className="w-10 h-10 text-success-500"
+                strokeWidth={1.5}
+              />
+            </div>
+          </div>
+
+          <div className="text-center mb-6">
+            <p className="text-h3 font-semibold text-white mb-1">
+              {t("scanner.result.successTitle")}
+            </p>
+            <p className="text-body-sm text-success-500 font-medium">
+              {t("scanner.result.successSubtitle")}
+            </p>
+          </div>
+
+          <div className="bg-white/5 border border-white/10 rounded-lg p-4 mb-5 space-y-3">
+            <ResultRow
+              icon={<UserIcon size={14} strokeWidth={1.75} />}
+              label={t("scanner.result.attendeeName")}
+              value={result.data.attendeeName}
+            />
+            <ResultRow
+              icon={<Ticket size={14} strokeWidth={1.75} />}
+              label={t("scanner.result.eventName")}
+              value={result.data.eventTitle}
+            />
+            {result.data.gateName && (
+              <ResultRow
+                icon={<DoorOpen size={14} strokeWidth={1.75} />}
+                label={t("scanner.result.gateName")}
+                value={result.data.gateName}
+              />
+            )}
+            <ResultRow
+              icon={<Clock size={14} strokeWidth={1.75} />}
+              label={t("scanner.result.time")}
+              value={new Date(result.data.checkedInAt).toLocaleTimeString(
+                "ar-EG",
+                { hour: "2-digit", minute: "2-digit" },
+              )}
+            />
+          </div>
+
+          <Button
+            variant="accent"
+            size="lg"
+            fullWidth
+            onClick={onRestart}
+            leftIcon={<RotateCcw size={16} strokeWidth={2} />}
+          >
+            {t("scanner.result.scanAnother")}
+          </Button>
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-ink-950/95 backdrop-blur-sm rounded-xl animate-fade-in">
+      <div className="w-full max-w-sm">
+        <div className="flex justify-center mb-5">
+          <div className="w-20 h-20 rounded-full bg-danger-500/15 flex items-center justify-center">
+            {result.error?.code === "ALREADY_CHECKED_IN" ? (
+              <Clock className="w-10 h-10 text-warning-500" strokeWidth={1.5} />
+            ) : (
+              <XCircle
+                className="w-10 h-10 text-danger-500"
+                strokeWidth={1.5}
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="text-center mb-6">
+          <p className="text-h3 font-semibold text-white mb-1">
+            {result.error?.code === "ALREADY_CHECKED_IN"
+              ? t("scanner.result.alreadyCheckedInTitle")
+              : t("scanner.result.failedTitle")}
+          </p>
+          <p className="text-body-sm text-ink-300 max-w-xs mx-auto">
+            {result.error?.message}
+          </p>
+        </div>
+
+        {result.error?.checkedInAt && (
+          <div className="bg-warning-500/10 border border-warning-500/20 rounded-lg p-3 mb-5">
+            <div className="flex items-center gap-2">
+              <Clock
+                className="w-3.5 h-3.5 text-warning-500 flex-shrink-0"
+                strokeWidth={2}
+              />
+              <p className="text-caption text-warning-500">
+                {t("scanner.result.previousCheckIn")}:{" "}
+                <span className="font-semibold tabular-nums">
+                  {new Date(result.error.checkedInAt).toLocaleTimeString(
+                    "ar-EG",
+                    { hour: "2-digit", minute: "2-digit" },
+                  )}
+                </span>
+              </p>
+            </div>
+          </div>
+        )}
+
+        <Button
+          variant="secondary"
+          size="lg"
+          fullWidth
+          onClick={onRestart}
+          leftIcon={<RotateCcw size={16} strokeWidth={2} />}
+          className="!bg-white/10 !text-white !border-white/20 hover:!bg-white/20"
+        >
+          {t("scanner.result.scanAgain")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ResultRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2 text-ink-400 min-w-0">
+        <span className="flex-shrink-0">{icon}</span>
+        <span className="text-caption">{label}</span>
+      </div>
+      <span className="text-body-sm font-medium text-white text-end truncate">
+        {value}
+      </span>
     </div>
   );
 }

@@ -2,33 +2,76 @@ import { Router } from "express";
 import { authenticateToken, requireRole } from "../../middleware/auth";
 import { Role } from "@prisma/client";
 import * as eventController from "../../controllers/eventController";
+import { validate } from "../../middleware/validate";
+import {
+  createEventSchema,
+  updateEventSchema,
+  updateEventStatusSchema,
+} from "../../validators/event.validator";
+import {
+  uuidParamSchema,
+  slugParamSchema,
+} from "../../validators/common.validator";
 
 const router = Router();
 
-// ✅ مسار عام (بدون مصادقة) - جلب تفاصيل فعالية للزوار باستخدام slug
-router.get("/public/:slug", eventController.getPublicEventBySlug);
+// ========================================
+// ✅ Public Routes (no auth)
+// ========================================
+router.get("/public", eventController.getPublicEvents);
+router.get(
+  "/public/:slug",
+  validate({ params: slugParamSchema }),
+  eventController.getPublicEventBySlug,
+);
 
-// ❌ باقي المسارات محمية (تتطلب توكن ودور مناسب)
+// ========================================
+// ✅ Staff Route (auth + STAFF role)
+// ⚠️ يجب أن يكون قبل requireRole([ORGANIZER, ADMIN])
+// ========================================
+router.get(
+  "/staff",
+  authenticateToken,
+  requireRole([Role.STAFF]),
+  eventController.getStaffEvents,
+);
+
+// ========================================
+// ✅ Organizer & Admin Routes
+// ========================================
 router.use(authenticateToken);
 router.use(requireRole([Role.ORGANIZER, Role.ADMIN]));
 
-// POST /api/v1/events - إنشاء فعالية جديدة
-router.post("/", eventController.createEvent);
-
-// GET /api/v1/events - جلب قائمة الفعاليات
+router.post(
+  "/",
+  validate({ body: createEventSchema }),
+  eventController.createEvent,
+);
 router.get("/", eventController.getEvents);
-
-// GET /api/v1/events/:id - جلب تفاصيل فعالية (خاصة)
-router.get("/:id", eventController.getEventById);
-
-// PATCH /api/v1/events/:id - تحديث فعالية
-router.patch("/:id", eventController.updateEvent);
-
-// PATCH /api/v1/events/:id/status - تغيير حالة الفعالية
-router.patch("/:id/status", eventController.updateEventStatus);
-// مسار الإحصائيات (بعد middleware المصادقة)
-router.get("/:id/stats", eventController.getEventStats);
-// مسار التحليلات المتقدمة (بعد middleware المصادقة)
-router.get("/:id/analytics", eventController.getEventAnalytics);
+router.get(
+  "/:id",
+  validate({ params: uuidParamSchema }),
+  eventController.getEventById,
+);
+router.patch(
+  "/:id",
+  validate({ params: uuidParamSchema, body: updateEventSchema }),
+  eventController.updateEvent,
+);
+router.patch(
+  "/:id/status",
+  validate({ params: uuidParamSchema, body: updateEventStatusSchema }),
+  eventController.updateEventStatus,
+);
+router.get(
+  "/:id/stats",
+  validate({ params: uuidParamSchema }),
+  eventController.getEventStats,
+);
+router.get(
+  "/:id/analytics",
+  validate({ params: uuidParamSchema }),
+  eventController.getEventAnalytics,
+);
 
 export default router;

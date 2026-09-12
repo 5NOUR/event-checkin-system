@@ -2,14 +2,25 @@ import { Router } from "express";
 import { authenticateToken, requireRole } from "../../middleware/auth";
 import { Role } from "@prisma/client";
 import * as checkInController from "../../controllers/checkInController";
+import * as contentController from "../../controllers/contentController";
+import { validate } from "../../middleware/validate";
+import { verifyCheckInSchema } from "../../validators/checkin.validator";
+import { eventIdParamSchema } from "../../validators/common.validator";
 
 const router = Router();
 
-// جميع مسارات الـ Check-in تتطلب مصادقة ودور STAFF أو ORGANIZER أو ADMIN
 router.use(authenticateToken);
 router.use(requireRole([Role.STAFF, Role.ORGANIZER, Role.ADMIN]));
 
-// POST /api/v1/checkin/verify - التحقق من رمز QR وتسجيل الدخول
-router.post("/verify", checkInController.verifyAndCheckIn);
+router.post(
+  "/verify",
+  validate({ body: verifyCheckInSchema }),
+  checkInController.verifyAndCheckIn,
+);
+router.get(
+  "/gates/:eventId",
+  validate({ params: eventIdParamSchema }),
+  contentController.getStaffGates,
+);
 
 export default router;
